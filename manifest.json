@@ -1,0 +1,19 @@
+{
+  "algorithm": "sha256",
+  "artifacts": {
+    "ocean_integrity": {
+      "latest": "v1",
+      "path": "integrity",
+      "versions": [
+        {
+          "file": "integrity/v1.js",
+          "sha256": "ab607328bfff1e17718fdf83fc99bc29e1a37534b715b6bf1ec43bed164c76b7",
+          "size": 24178,
+          "version": "v1"
+        }
+      ]
+    }
+  },
+  "format": 2,
+  "normalization": "Hashes cover the content as stored in git: CRLF line endings count as LF."
+}
