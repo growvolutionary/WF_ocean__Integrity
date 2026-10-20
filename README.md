@@ -44,6 +44,13 @@ Every download from the Ocean opens a dialog that shows four steps:
 A mismatch is reported as critical and the archive is only saved after an explicit confirmation.
 Missing peers or records make the result *unclear* — never a confirmation.
 
+The check needs WebCrypto and therefore a secure context (HTTPS, or `localhost` in development). On a
+page without one, `integrity.js` checks nothing, says so and offers to save the archive unchecked.
+For tests with a phone in the LAN, a host in debug mode may be opened on a loopback address while its
+peers watch its LAN address: `integrity.js` then takes the address from `/peering/api/v1/status` as the
+host's own, but only when that status reports `debug` and the page runs on a loopback host. The alias
+is named in the details and keeps the result at *unclear* at best.
+
 ## Release digests (`wf-content-v1`)
 
 When a release is published, the Ocean records its content digest in the host's signed ledger

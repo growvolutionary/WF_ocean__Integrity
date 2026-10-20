@@ -124,10 +124,14 @@ async function verified(key, context, payload, signature) {
 }
 
 async function fingerprint(key) {
-    const digest = (await sha256(b64(key))).slice(0, 16)
-    let binary = ""
-    for (const byte of digest) binary += String.fromCharCode(byte)
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+    try {
+        const digest = (await sha256(b64(key))).slice(0, 16)
+        let binary = ""
+        for (const byte of digest) binary += String.fromCharCode(byte)
+        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+    } catch {
+        return null
+    }
 }
 
 function origin(url) {
@@ -138,6 +142,21 @@ function origin(url) {
     } catch {
         return null
     }
+}
+
+function secureContext() {
+    return globalThis.isSecureContext === true && !!globalThis.crypto?.subtle
+}
+
+function loopback(hostname) {
+    return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "[::1]"
+        || /^127(\.\d{1,3}){3}$/.test(hostname)
+}
+
+function hostOrigin(status) {
+    const declared = origin(status.url || "")
+    if (!declared || declared === location.origin) return location.origin
+    return status.debug === true && loopback(location.hostname) ? declared : location.origin
 }
 
 
@@ -171,8 +190,8 @@ async function inspectPeer(url, host, artifacts) {
     if (node.__error) return result
     result.reachable = true
     const statement = node.statement || {}
-    result.identity = typeof statement.key === "string"
-        && statement.node === await fingerprint(statement.key)
+    const nodeId = typeof statement.key === "string" ? await fingerprint(statement.key) : null
+    result.identity = nodeId !== null && statement.node === nodeId
         && await verified(statement.key, "wf-peering-node-v1", statement, node.signature || "")
         && origin(statement.url || "") === url
     result.peersHost = statement.role === "peer" && origin(statement.host || "") === host
@@ -186,16 +205,17 @@ async function inspectPeer(url, host, artifacts) {
 }
 
 export async function network(artifacts) {
-    const host = location.origin
-    if (!await peeringAvailable()) return { available: false, claims: {}, reported: 0, peers: [] }
-    const [listing, ...claims] = await Promise.all([
+    if (!await peeringAvailable()) return { available: false, host: location.origin, claims: {}, reported: 0, peers: [] }
+    const [status, listing, ...claims] = await Promise.all([
+        json(`${HOST_API}/status`, true),
         json(`${HOST_API}/peers`, true),
         ...artifacts.map(artifact => json(`${HOST_API}/hash?id=${encodeURIComponent(artifact)}`, true))
     ])
+    const host = hostOrigin(status)
     const urls = [...new Set((listing.peers || []).map(peer => origin(peer.url || ""))
         .filter(url => url && url !== host))].slice(0, MAX_PEERS)
     const inspected = await Promise.all(urls.map(url => inspectPeer(url, host, artifacts)))
-    const result = { available: true, claims: {}, reported: urls.length, peers: inspected.filter(peer => peer.identity && peer.peersHost) }
+    const result = { available: true, host, claims: {}, reported: urls.length, peers: inspected.filter(peer => peer.identity && peer.peersHost) }
     artifacts.forEach((artifact, index) => { result.claims[artifact] = claims[index].__error ? null : claims[index] })
     return result
 }
@@ -496,13 +516,29 @@ export async function download(options) {
     }
 }
 
+async function unverified(ui, base, filename) {
+    for (const key of ["script", "peers", "transfer", "content"]) ui.set(key, "unclear", "–")
+    ui.finish("unclear", text("INSECURE_CONTEXT"))
+    const confirmed = await ui.decide(true)
+    if (confirmed) {
+        const response = await fetch(base, { credentials: "include" })
+        if (!response.ok) throw new Error("download")
+        store(await response.arrayBuffer(), filename)
+    }
+    ui.hide()
+    return { saved: confirmed, level: "unclear" }
+}
+
 async function run(ui, { ptype, pkg, version, base, filename }) {
+    if (!secureContext()) return unverified(ui, base, filename)
     const artifact = await releaseArtifact(ptype, pkg, version)
     const peering = await network([ARTIFACT, artifact])
+    const aliased = peering.host !== location.origin
     const script = await checkScript(peering)
     ui.set("script", script.level, text(script.message, { version: script.served ?? "?", count: script.confirmed }))
     ui.detail(`integrity.js · ${script.local ?? "?"} / ${script.host ?? "?"}`)
     if (script.confirmed) ui.detail(text("SCRIPT_PEERS_CONFIRM", { count: script.confirmed }))
+    if (aliased) ui.detail(text("HOST_DEBUG_ALIAS", { page: location.origin, host: peering.host }))
 
     if (peering.available) {
         ui.set("peers", peering.peers.length ? "verified" : "unclear", peering.peers.length
@@ -536,7 +572,7 @@ async function run(ui, { ptype, pkg, version, base, filename }) {
     for (const check of contentChecks) if (check !== headline) ui.detail(text(check.key, check.values))
     ui.detail(`${artifact} · ${meta.content?.digest ?? "?"}`)
 
-    const level = worst([script.level, release.transfer, release.content])
+    const level = worst([script.level, release.transfer, release.content, aliased ? "unclear" : "verified"])
     if (level === "critical") {
         ui.finish("critical", text("RESULT_CRITICAL"))
         const override = await ui.decide(true)
