@@ -60,9 +60,9 @@ adds a link to the same chain, and a deleted package is recorded as withdrawn.
 
 - **Digest:** SHA-256 over all regular files of the archive, sorted by the UTF-8 bytes of their path,
   each contributing `path ‖ 0x00 ‖ SHA-256(content)`.
-- **Excluded:** exactly `EULA.md`, `OMLA.md` and `license.json` at the root. The Ocean writes these
+- **Excluded:** exactly `EULA.md`, `OMLA.md`, `DLA.md` and `license.json` at the root. The Ocean writes these
   into licensed downloads for one buyer; they are never part of a release and the Ocean refuses
-  releases that contain them. `integrity.js` only ever leaves out these three names, whatever the host
+  releases that contain them. `integrity.js` only ever leaves out these four names, whatever the host
   asks for.
 - **Artifact id:** `ocean_release:` + the first 32 hex characters of SHA-256 of
   `<ptype>\n<package>\n<version>` (`ptype` is `additives` or `extensions`).

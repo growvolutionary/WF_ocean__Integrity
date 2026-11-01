@@ -1,7 +1,7 @@
 from pathlib import Path
 import argparse, hashlib, tarfile
 
-RESERVED = ("EULA.md", "OMLA.md", "license.json")
+RESERVED = ("EULA.md", "OMLA.md", "DLA.md", "license.json")
 PREFIX = "ocean_release:"
 
 
