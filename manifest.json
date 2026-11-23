@@ -7,13 +7,20 @@
       "versions": [
         {
           "file": "integrity/v1.js",
-          "sha256": "6467297323b8655df1dfa367e3b935477edcbb3be23d88834d15a384e56000a3",
-          "size": 25672,
+          "http": {
+            "sha256": "fd91d9ef93f32646c879ec561b9dbba40f75a69a567ea584196bfdc1ffeefe66",
+            "sha384": "fd961c73c3b6f2b99dd42a54ccd54d93183c689a5e9ab6c894cd86d7c605992b70f073d7130891236d46290758d8af69",
+            "size": 27312,
+            "sri": "sha384-/ZYcc8O28rmd1CpUzNVNkxg8aJpemrbIlM2G18YFmStw8HPXEwiRI21GKQdY2K9p"
+          },
+          "sha256": "fd91d9ef93f32646c879ec561b9dbba40f75a69a567ea584196bfdc1ffeefe66",
+          "size": 27312,
           "version": "v1"
         }
       ]
     }
   },
   "format": 2,
+  "http": "http covers the exact bytes a host serves and a browser checks with Subresource Integrity: text artifacts are served with LF line endings, binary artifacts byte for byte. A client compares bytes it fetched over HTTP only with http, never with the normalized sha256.",
   "normalization": "Hashes cover the content as stored in git: CRLF line endings count as LF."
 }

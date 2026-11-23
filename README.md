@@ -283,3 +283,12 @@ peers replicated — nothing more. It does not prove that the release is free of
 
 The code of this repository is a public integrity promise that belongs to the WebFluid "ocean"
 Additive. The code is licensed as [ARR (All rights reserved)](LICENSE).
+
+## HTTP and SRI digests
+
+Every version also carries `http` (`sha256`, `sha384`, `sri`, `size`): the exact bytes a host serves and
+a browser checks with Subresource Integrity. `sha256` and `size` above keep their meaning — the content
+with CRLF counted as LF (binary artifacts byte for byte) — and their values did not change. A client
+compares bytes it fetched over HTTP only with `http`, never with the normalised `sha256`.
+`python -m pytest -q tests` checks reproducibility, the separation of both digests, a CRLF copy and a
+flipped byte, and — next to the Additive — the served files against `latest`.

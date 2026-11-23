@@ -22,9 +22,7 @@ const RELEASE = "ocean_release:"
 const CONTENT = "wf-content-v1"
 const RESERVED = ["EULA.md", "OMLA.md", "DLA.md", "license.json"]
 const HOST_API = "/peering/api/v1"
-const PEER_API = "/api/v1"
 const TIMEOUT = 8000
-const MAX_PEERS = 8
 const BLOCK = 512
 const REGULAR = ["0", "\0", "7"]
 const LEVELS = { verified: 0, unclear: 1, warning: 2, critical: 3 }
@@ -113,27 +111,6 @@ async function json(url, sameOrigin = false) {
     }
 }
 
-async function verified(key, context, payload, signature) {
-    try {
-        const publicKey = await crypto.subtle.importKey("raw", b64(key), { name: "Ed25519" }, false, ["verify"])
-        const message = encoder.encode(`${context}\n${canonical(payload)}`)
-        return await crypto.subtle.verify({ name: "Ed25519" }, publicKey, b64(signature), message)
-    } catch {
-        return false
-    }
-}
-
-async function fingerprint(key) {
-    try {
-        const digest = (await sha256(b64(key))).slice(0, 16)
-        let binary = ""
-        for (const byte of digest) binary += String.fromCharCode(byte)
-        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
-    } catch {
-        return null
-    }
-}
-
 function origin(url) {
     try {
         const parsed = new URL(url)
@@ -180,43 +157,67 @@ export async function peeringAvailable() {
     return !health.__error && health.status === "ok"
 }
 
-async function inspectPeer(url, host, artifacts) {
-    const result = { url, reachable: false, identity: false, peersHost: false, independent: null, records: {} }
-    const base = `${url}${PEER_API}`
-    const [node, trust, ...records] = await Promise.all([
-        json(`${base}/node`), json(`${base}/trust`),
-        ...artifacts.map(artifact => json(`${base}/hash?id=${encodeURIComponent(artifact)}`))
-    ])
-    if (node.__error) return result
-    result.reachable = true
-    const statement = node.statement || {}
-    const nodeId = typeof statement.key === "string" ? await fingerprint(statement.key) : null
-    result.identity = nodeId !== null && statement.node === nodeId
-        && await verified(statement.key, "wf-peering-node-v1", statement, node.signature || "")
-        && origin(statement.url || "") === url
-    result.peersHost = statement.role === "peer" && origin(statement.host || "") === host
-    if (!trust.__error && result.identity && trust.key === statement.key
-        && await verified(trust.key, "wf-trust-v1", { node: trust.node, key: trust.key, report: trust.report }, trust.signature || "")) {
-        const assessment = trust.report?.host || {}
-        if (origin(assessment.target || "") === host) result.independent = assessment.independent_observers ?? null
+function storedCheck() {
+    try {
+        const entry = JSON.parse(localStorage.getItem(`wf.peering.last-check:${location.origin}`) || "null")
+        return entry && typeof entry.checkedAt === "string" && typeof entry.status === "string" ? entry : null
+    } catch {
+        return null
     }
-    artifacts.forEach((artifact, index) => { result.records[artifact] = records[index].__error ? null : records[index] })
-    return result
+}
+
+function peeringVerifier() {
+    const loaded = window.wf?.adt?.peering?.verifier
+    if (loaded) return Promise.resolve(loaded)
+    return new Promise(resolve => {
+        const timer = setTimeout(() => resolve(null), TIMEOUT)
+        window.addEventListener("peering:verifier", () => {
+            clearTimeout(timer)
+            resolve(window.wf.adt.peering.verifier)
+        }, { once: true })
+    })
 }
 
 export async function network(artifacts) {
-    if (!await peeringAvailable()) return { available: false, host: location.origin, claims: {}, reported: 0, peers: [] }
-    const [status, listing, ...claims] = await Promise.all([
+    if (!await peeringAvailable()) {
+        return { available: false, host: location.origin, claims: {}, reported: 0, peers: [], verdict: null, error: null,
+                 master: null, cached: null }
+    }
+    const [status, ...claims] = await Promise.all([
         json(`${HOST_API}/status`, true),
-        json(`${HOST_API}/peers`, true),
         ...artifacts.map(artifact => json(`${HOST_API}/hash?id=${encodeURIComponent(artifact)}`, true))
     ])
-    const host = hostOrigin(status)
-    const urls = [...new Set((listing.peers || []).map(peer => origin(peer.url || ""))
-        .filter(url => url && url !== host))].slice(0, MAX_PEERS)
-    const inspected = await Promise.all(urls.map(url => inspectPeer(url, host, artifacts)))
-    const result = { available: true, host, claims: {}, reported: urls.length, peers: inspected.filter(peer => peer.identity && peer.peersHost) }
+    const result = { available: true, host: hostOrigin(status), claims: {}, reported: 0, peers: [], verdict: null, error: null,
+                     master: null, cached: null }
     artifacts.forEach((artifact, index) => { result.claims[artifact] = claims[index].__error ? null : claims[index] })
+    const verifier = await peeringVerifier()
+    if (!verifier) {
+        result.error = "VERIFIER_UNAVAILABLE"
+        result.cached = storedCheck()
+        return result
+    }
+    const report = await verifier.checkApp({ artifacts: artifacts.filter(artifact => artifact === ARTIFACT) })
+    result.verdict = report.verdict
+    result.master = report.master
+    result.cached = report.cached ?? null
+    if (!report.verdict) {
+        result.error = report.error
+        return result
+    }
+    result.reported = report.verdict.independence.masters
+    const own = report.artifacts.find(item => item.id === ARTIFACT)
+    for (const seen of (own?.observations || []).filter(item => item.fresh)) {
+        result.peers.push({ url: seen.signer, independent: null,
+                            records: { [ARTIFACT]: { observation: { observed: seen.observed, status: seen.status } } } })
+    }
+    for (const artifact of artifacts.filter(item => item !== ARTIFACT)) {
+        const found = await verifier.artifactRecord(artifact, { report })
+        if (!found.record) continue
+        result.peers.push({ url: report.master.url, independent: report.verdict.independence.independent_groups,
+                            declared: report.verdict.independence.declared_groups ?? 0,
+                            records: { [artifact]: { hash: found.record.hash, chain_length: found.seq,
+                                                     missing_since: found.retracted, record: found.record } } })
+    }
     return result
 }
 
@@ -405,8 +406,10 @@ export async function verifyRelease({ ptype, pkg, version, buffer, meta, peering
                 const confirmers = head.filter(item => item.record.hash === content.digest)
                 result.confirmed = confirmers.length
                 const independent = confirmers.length >= 2 || (confirmers[0].peer.independent ?? 0) >= 2
-                add(independent ? "verified" : "unclear", independent ? "CONTENT_PEERS_MATCH" : "PEER_SINGLE",
-                    { count: confirmers.length, chain })
+                const declared = !independent && (confirmers[0].peer.declared ?? 0) >= 2
+                add(independent || declared ? "verified" : "unclear",
+                    independent ? "CONTENT_PEERS_MATCH" : declared ? "CONTENT_DECLARED_MATCH" : "PEER_SINGLE",
+                    { count: confirmers.length, chain, operators: confirmers[0].peer.declared ?? 0 })
             }
             if (head.some(item => item.record.missing_since)) add("warning", "CONTENT_RETRACTED")
         }
@@ -529,6 +532,21 @@ async function unverified(ui, base, filename) {
     return { saved: confirmed, level: "unclear" }
 }
 
+function networkProblem(error) {
+    const code = String(error || "")
+    if (code === "VERIFIER_UNAVAILABLE") return "VERIFIER_MISSING"
+    if (code === "APP_UNKNOWN_TO_MASTER") return "APP_UNKNOWN"
+    if (code.startsWith("EVIDENCE_")) return "EVIDENCE_MALFORMED"
+    if (code === "NO_MASTER") return "NO_MASTER"
+    return "MASTER_UNREACHABLE"
+}
+
+function when(value) {
+    if (!value) return "–"
+    const moment = new Date(value)
+    return Number.isNaN(moment.getTime()) ? "–" : moment.toLocaleString()
+}
+
 async function run(ui, { ptype, pkg, version, base, filename }) {
     if (!secureContext()) return unverified(ui, base, filename)
     const artifact = await releaseArtifact(ptype, pkg, version)
@@ -541,10 +559,24 @@ async function run(ui, { ptype, pkg, version, base, filename }) {
     if (aliased) ui.detail(text("HOST_DEBUG_ALIAS", { page: location.origin, host: peering.host }))
 
     if (peering.available) {
-        ui.set("peers", peering.peers.length ? "verified" : "unclear", peering.peers.length
-            ? text("PEERS_CONFIRMED", { verified: peering.peers.length, reported: peering.reported })
-            : text("PEERS_NONE"))
-        for (const peer of peering.peers) ui.detail(`${peer.url} · ${peer.records[artifact]?.hash ?? "–"} · ${peer.records[artifact]?.chain_length ?? "–"}`)
+        const verdict = peering.verdict
+        const level = !verdict ? "unclear" : verdict.level === "critical" ? "critical"
+            : verdict.status === "witnessed" || verdict.status === "declared" ? "verified" : "unclear"
+        ui.set("peers", level, verdict && verdict.status === "declared"
+            ? text("PEERS_DECLARED", { masters: verdict.independence.proving, operators: verdict.independence.declared_groups })
+            : verdict && verdict.independence.proving
+            ? text("PEERS_CONFIRMED", { verified: verdict.independence.independent_groups, reported: peering.reported })
+            : verdict ? text("PEERS_NONE") : text(networkProblem(peering.error), { master: peering.master?.url ?? "–" }))
+        if (verdict) {
+            ui.detail(`${verdict.status} · ${verdict.net} · ${(verdict.reasons || []).join(", ") || "–"}`)
+            ui.detail(text("MASTER_LINE", { master: peering.master?.url ?? "–", seen: when(verdict.last_seen) }))
+        } else if (peering.error) ui.detail(peering.error)
+        if (peering.cached) {
+            const cached = peering.cached
+            ui.detail(text("CACHED", { status: cached.status, time: when(cached.checkedAt), required: cached.required,
+                                       groups: cached.status === "declared" ? cached.declared_groups ?? 0 : cached.independent_groups }))
+        }
+        for (const peer of peering.peers) ui.detail(`${peer.url} · ${peer.records[artifact]?.hash ?? peer.records[ARTIFACT]?.observation?.observed ?? "–"}`)
     } else ui.set("peers", "unclear", text("PEERING_OFF"))
 
     let buffer, meta
