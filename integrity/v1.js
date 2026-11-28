@@ -4,13 +4,13 @@
  *                                                                  *
  *       This script verifies every download of the WebFluid        *
  *     "ocean" Additive in your browser: it checks itself, asks     *
- *      the peers of the host and compares the content of the       *
- *      release with their records before it is saved. To keep      *
- *     your application transparent and secure, you should not      *
- *     edit or change its content by yourself. Additionally we      *
- *      highly recommend to add the "peering" Additive to your      *
- *       application and to not remove the "ocean" Additive's       *
- *                        peering features.                         *
+ *       the peering network of the host for its records and        *
+ *    compares the content of the release with them before it is    *
+ *     saved. To keep your application transparent and secure,      *
+ *      you should not edit or change its content by yourself.      *
+ *      Additionally we highly recommend to add the "peering"       *
+ *    Additive to your application and to not remove the "ocean"    *
+ *                   Additive's peering features.                   *
  *                                                                  *
  ********************************************************************/
 

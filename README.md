@@ -12,6 +12,7 @@ to check a downloaded release yourself.
 | `generate.py`       | Computes the SHA-256 of every version and writes `manifest.json` (and `integrity/hashes/`).                                    |
 | `manifest.json`     | The public reference (format 2): per artifact the versions (`version`, `file`, `sha256`, `size`) and `latest`.                 |
 | `digest.py`         | Computes the `wf-content-v1` digest of a release archive or a checked out directory, and the peering artifact id of a release. |
+| `sync.py`           | Maintainer step: copies the served `static/js/integrity.js` into the latest open version and runs `generate.py`.               |
 | `.gitattributes`    | Pins `integrity/*.js` to LF, so a checkout on any platform hashes to the same value.                                           |
 
 `generate.py` hashes the content as stored in git: CRLF line endings count as LF. The output is
@@ -20,7 +21,12 @@ is a local by-product and not committed, `manifest.json` is.
 
 ```bash
 python generate.py
+python -m pytest -q tests
 ```
+
+With this repository checked out as `integrity/` inside the Additive, `python -I sync.py` copies the
+served script with LF line endings into the latest version and regenerates `manifest.json`. A version
+listed in its `FROZEN` map is never rewritten; a changed script then becomes `v<N+1>.js`.
 
 The `ocean` Additive keeps a clone of this repository, runs `generate.py` exactly once per integrity
 run as a subprocess of its own interpreter, recomputes every hash itself and only reports versions

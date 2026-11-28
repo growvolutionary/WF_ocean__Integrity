@@ -42,7 +42,7 @@ def main():
     parser = argparse.ArgumentParser(description="wf-content-v1 digest of an Ocean release and its peering artifact id.")
     parser.add_argument("source", nargs="?", help="A downloaded release archive (.tar) or a checked out directory.")
     parser.add_argument("--artifact", nargs=3, metavar=("PTYPE", "PACKAGE", "VERSION"),
-                        help="Print the artifact id of a release, e.g. additives users 1.0a4.")
+                        help="Print the artifact id of a release, e.g. additives users 1.0a2.")
     args = parser.parse_args()
 
     if args.artifact: print(artifact(*args.artifact))

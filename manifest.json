@@ -8,12 +8,12 @@
         {
           "file": "integrity/v1.js",
           "http": {
-            "sha256": "fd91d9ef93f32646c879ec561b9dbba40f75a69a567ea584196bfdc1ffeefe66",
-            "sha384": "fd961c73c3b6f2b99dd42a54ccd54d93183c689a5e9ab6c894cd86d7c605992b70f073d7130891236d46290758d8af69",
+            "sha256": "1a5544f830daf27b9608efd3b6ac38bd6710206243bc1fc8224fa7b849e071eb",
+            "sha384": "2255e92c21b00b4770fca97add6e76b02a0d8037d3d705f7eb0bd84f580af45a2a55ee1f2815f19b7c8cb347e3d4413b",
             "size": 27312,
-            "sri": "sha384-/ZYcc8O28rmd1CpUzNVNkxg8aJpemrbIlM2G18YFmStw8HPXEwiRI21GKQdY2K9p"
+            "sri": "sha384-IlXpLCGwC0dw/Kl63W52sCoNgDfT1wX36wvYT1gK9FoqVe4fKBXxm3yMs0fj1EE7"
           },
-          "sha256": "fd91d9ef93f32646c879ec561b9dbba40f75a69a567ea584196bfdc1ffeefe66",
+          "sha256": "1a5544f830daf27b9608efd3b6ac38bd6710206243bc1fc8224fa7b849e071eb",
           "size": 27312,
           "version": "v1"
         }

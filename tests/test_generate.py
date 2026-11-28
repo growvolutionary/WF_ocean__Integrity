@@ -1,5 +1,5 @@
 from pathlib import Path
-import base64, hashlib, json, pytest, shutil, subprocess, sys
+import base64, hashlib, json, pytest, re, shutil, subprocess, sys
 
 ROOT = Path(__file__).resolve().parents[1]
 ADDITIVE = ROOT.parent
@@ -86,3 +86,31 @@ def test_the_additive_serves_the_latest_reference(artifact):
         assert actual != expected, f"{artifact} matches again; remove it from KNOWN_DRIFT"
         pytest.xfail(KNOWN_DRIFT[artifact])
     assert actual == expected
+
+
+def run_sync(target: Path, additive: Path) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, "-I", str(target / "sync.py"), "--additive", str(additive)], cwd=target,
+                          capture_output=True, text=True)
+
+
+def test_sync_writes_the_open_version_and_never_a_frozen_one(tmp_path):
+    target = copy(tmp_path)
+    artifact, source = next(iter(SERVED.items()))
+    before = manifest(target)["artifacts"][artifact]
+    kept = {item["file"]: (target / item["file"]).read_bytes() for item in before["versions"][:-1]}
+    served = tmp_path / "additive" / source
+    served.parent.mkdir(parents=True)
+    served.write_bytes(b"changed\r\n")
+    assert run_sync(target, tmp_path / "additive").returncode == 0
+    item = latest(manifest(target), artifact)
+    assert item["version"] == before["latest"] and (target / item["file"]).read_bytes() == b"changed\n"
+    assert all((target / file).read_bytes() == data for file, data in kept.items())
+    script = (target / "sync.py").read_text(encoding="utf-8")
+    frozen = re.sub(r"^FROZEN = .*$", f'FROZEN = {{"{artifact}": {{"{before["latest"]}"}}}}', script, flags=re.M)
+    (target / "sync.py").write_bytes(frozen.encode("utf-8"))
+    served.write_bytes(b"again\n")
+    assert run_sync(target, tmp_path / "additive").returncode == 0
+    fresh = latest(manifest(target), artifact)
+    assert fresh["version"] == f"v{int(before['latest'][1:]) + 1}"
+    assert (target / fresh["file"]).read_bytes() == b"again\n"
+    assert (target / item["file"]).read_bytes() == b"changed\n"
